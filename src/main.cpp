@@ -4,6 +4,8 @@
 #include <json/json.h>
 #include <fstream>
 
+//test
+
 std::map<std::string, Camera> ParseCameras(const std::string& filename)
 {
 	Json::Value json;
