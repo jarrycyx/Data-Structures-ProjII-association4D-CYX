@@ -99,12 +99,12 @@ void Associater::ClusterPersons2D(const SkelDetection& detection, std::vector<Pe
 
 	// generate valid pafs
 	std::vector<std::tuple<float, int, int, int>> pafSet;
-	for (int pafIdx = 0; pafIdx < GetSkelDef().pafSize; pafIdx++) {
-		const int jaIdx = GetSkelDef().pafDict(0, pafIdx);
+	for (int pafIdx = 0; pafIdx < GetSkelDef().pafSize; pafIdx++) {//人体骨骼模型的每一条连接边
+		const int jaIdx = GetSkelDef().pafDict(0, pafIdx);//这条边的两个顶点编号
 		const int jbIdx = GetSkelDef().pafDict(1, pafIdx);
 		for (int jaCandiIdx = 0; jaCandiIdx < detection.joints[jaIdx].cols(); jaCandiIdx++) {
 			for (int jbCandiIdx = 0; jbCandiIdx < detection.joints[jbIdx].cols(); jbCandiIdx++) {
-				const float jaScore = detection.joints[jaIdx](2, jaCandiIdx);
+				const float jaScore = detection.joints[jaIdx](2, jaCandiIdx);//该顶点对应的概率
 				const float jbScore = detection.joints[jbIdx](2, jbCandiIdx);
 				const float pafScore = detection.pafs[pafIdx](jaCandiIdx, jbCandiIdx);
 				if (jaScore > 0.f && jbScore > 0.f && pafScore > 0.f)
@@ -213,10 +213,10 @@ void Associater::ClusterPersons2D(const SkelDetection& detection, std::vector<Pe
 void Associater::ClusterPersons2D()
 {
 	// cluster 2D
-	for (int view = 0; view < m_cams.size(); view++) {
+	for (int view = 0; view < m_cams.size(); view++) {//该帧的每一台相机
 		std::vector<Eigen::VectorXi> assignMap;
 		std::vector<Person2D> persons2D;
-		ClusterPersons2D(m_detections[view], persons2D, assignMap);
+		ClusterPersons2D(m_detections[view], persons2D, assignMap);//传入的是该帧，这一台相机的数据
 		m_personsMapByView[view].resize(persons2D.size(), Eigen::VectorXi::Constant(GetSkelDef().jointSize, -1));
 		for (int jIdx = 0; jIdx < GetSkelDef().jointSize; jIdx++) {
 			for (int candiIdx = 0; candiIdx < assignMap[jIdx].size(); candiIdx++) {

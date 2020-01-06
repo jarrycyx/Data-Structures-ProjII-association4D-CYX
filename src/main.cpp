@@ -212,8 +212,8 @@ int main()
 
 		associater.SetDetection(detections[frameIdx]);//设置数据的格式
 		associater.ConstructJointRays();//根据2D数据，计算当前帧，每台相机成像的3D坐标（多解）
-		associater.ConstructJointEpiEdges();
-		associater.ClusterPersons2D();
+		associater.ConstructJointEpiEdges();//计算当前帧，相邻两台相机的投影线间距
+		associater.ClusterPersons2D();//推断2D图形中属于同一个人的点
 		associater.ProposalCollocation();
 		associater.ClusterPersons3D();
 		associater.ConstructPersons();
