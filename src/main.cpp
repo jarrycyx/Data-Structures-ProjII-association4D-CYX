@@ -189,7 +189,7 @@ void SaveResult(const int& frameIdx, const std::vector<cv::Mat>& images, const s
 
 int main()
 {
-	// load data and detections
+	// load data and detections.
 	std::map<std::string, Camera> _cameras = ParseCameras("../data/calibration.json");
 	std::vector<Camera> cameras;
 	std::vector<cv::Mat> rawImgs;
