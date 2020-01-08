@@ -102,17 +102,18 @@ void Associater::ClusterPersons2D(const SkelDetection& detection, std::vector<Pe
 	for (int pafIdx = 0; pafIdx < GetSkelDef().pafSize; pafIdx++) {//人体骨骼模型的每一条连接边
 		const int jaIdx = GetSkelDef().pafDict(0, pafIdx);//这条边的两个顶点编号
 		const int jbIdx = GetSkelDef().pafDict(1, pafIdx);
-		for (int jaCandiIdx = 0; jaCandiIdx < detection.joints[jaIdx].cols(); jaCandiIdx++) {
+		for (int jaCandiIdx = 0; jaCandiIdx < detection.joints[jaIdx].cols(); jaCandiIdx++) {//探测到了许多个这样的顶点
 			for (int jbCandiIdx = 0; jbCandiIdx < detection.joints[jbIdx].cols(); jbCandiIdx++) {
 				const float jaScore = detection.joints[jaIdx](2, jaCandiIdx);//该顶点对应的概率
 				const float jbScore = detection.joints[jbIdx](2, jbCandiIdx);
 				const float pafScore = detection.pafs[pafIdx](jaCandiIdx, jbCandiIdx);
 				if (jaScore > 0.f && jbScore > 0.f && pafScore > 0.f)
 					pafSet.emplace_back(std::make_tuple(pafScore, pafIdx, jaCandiIdx, jbCandiIdx));
+					//两类点中，某两个点相连关系
 			}
 		}
 	}
-	std::sort(pafSet.rbegin(), pafSet.rend());
+	std::sort(pafSet.rbegin(), pafSet.rend());//所有边排序
 
 	// construct bodies use minimal spanning tree
 	assignMap.resize(GetSkelDef().jointSize);
@@ -121,13 +122,13 @@ void Associater::ClusterPersons2D(const SkelDetection& detection, std::vector<Pe
 
 	for (const auto& paf : pafSet) {
 		const float pafScore = std::get<0>(paf);
-		const int pafIdx = std::get<1>(paf);
-		const int jaCandiIdx = std::get<2>(paf);
+		const int pafIdx = std::get<1>(paf);//骨骼框架中边的编号
+		const int jaCandiIdx = std::get<2>(paf);//某类点中，某个点的序号
 		const int jbCandiIdx = std::get<3>(paf);
-		const int jaIdx = GetSkelDef().pafDict(0, pafIdx);
+		const int jaIdx = GetSkelDef().pafDict(0, pafIdx);//某类点在骨骼框架中的编号
 		const int jbIdx = GetSkelDef().pafDict(1, pafIdx);
 
-		int& aAssign = assignMap[jaIdx][jaCandiIdx];
+		int& aAssign = assignMap[jaIdx][jaCandiIdx];//某类点的某个点分配给某个人
 		int& bAssign = assignMap[jbIdx][jbCandiIdx];
 
 		// 1. A & B not assigned yet: Create new person
@@ -170,8 +171,9 @@ void Associater::ClusterPersons2D(const SkelDetection& detection, std::vector<Pe
 			bool conflict = false;
 			for (int jIdx = 0; jIdx < GetSkelDef().jointSize && !conflict; jIdx++)
 				conflict |= (personFst.joints(2, jIdx) > 0.f && personSec.joints(2, jIdx) > 0.f);
+				//若未出现两个“人”的某一类点都存在的情况，说明无冲突（这两个“人”是一个人的两部分）
 
-			if (!conflict) {
+			if (!conflict) {//合并一个人的两部分
 				for (int jIdx = 0; jIdx < GetSkelDef().jointSize; jIdx++)
 					if (personSec.joints(2, jIdx) > 0.f)
 						personFst.joints.col(jIdx) = personSec.joints.col(jIdx);
@@ -182,7 +184,7 @@ void Associater::ClusterPersons2D(const SkelDetection& detection, std::vector<Pe
 						if (tmp[i] == assignSec)
 							tmp[i] = assignFst;
 						else if (tmp[i] > assignSec)
-							tmp[i]--;
+							tmp[i]--;//后面的人的编号依次向前移动
 					}
 				}
 			}
@@ -192,7 +194,7 @@ void Associater::ClusterPersons2D(const SkelDetection& detection, std::vector<Pe
 	// filter
 	const int jcntThresh = round(0.5f * GetSkelDef().jointSize);
 	for (auto person = persons.begin(); person != persons.end();) {
-		if (person->GetJointCnt() < jcntThresh ) {
+		if (person->GetJointCnt() < jcntThresh ) {//如果有效点还不到一半，说明这不是一个人
 			const int personIdx = person - persons.begin();
 			for (Eigen::VectorXi& tmp : assignMap) {
 				for (int i = 0; i < tmp.size(); i++) {
@@ -202,7 +204,7 @@ void Associater::ClusterPersons2D(const SkelDetection& detection, std::vector<Pe
 						tmp[i]--;
 				}
 			}
-			person = persons.erase(person);
+			person = persons.erase(person);//删掉这个人
 		}
 		else
 			person++;
@@ -222,7 +224,7 @@ void Associater::ClusterPersons2D()
 			for (int candiIdx = 0; candiIdx < assignMap[jIdx].size(); candiIdx++) {
 				const int pIdx = assignMap[jIdx][candiIdx];
 				if (pIdx >= 0)
-					m_personsMapByView[view][pIdx][jIdx] = candiIdx;
+					m_personsMapByView[view][pIdx][jIdx] = candiIdx;//某个视图下，某个人，某一类点是哪一个
 			}
 		}
 	}
@@ -234,13 +236,15 @@ void Associater::ProposalCollocation()
 	// proposal persons
 	std::function<void(const Eigen::VectorXi&, const int&, std::vector<Eigen::VectorXi>&)> Proposal
 		= [&Proposal](const Eigen::VectorXi& candiCnt, const int& k, std::vector<Eigen::VectorXi>& proposals) {
+		//k表示某个相机视图
 		if (k == candiCnt.size()) {
 			return;
 		}
 		else if (k == 0) {
+			//第一个相机视图
 			proposals = std::vector<Eigen::VectorXi>(candiCnt[k] + 1, Eigen::VectorXi::Constant(candiCnt.size(), -1));
-			for (int i = 0; i < candiCnt[k]; i++)
-				proposals[i + 1][k] = i;
+			for (int i = 0; i < candiCnt[k]; i++)//i表示该视图中的某个人
+				proposals[i + 1][k] = i;//第i+1个人在k视图中是第i个
 			Proposal(candiCnt, k + 1, proposals);
 		}
 		else {
@@ -256,7 +260,7 @@ void Associater::ProposalCollocation()
 	};
 
 	m_personProposals.clear();
-	Eigen::VectorXi candiCnt(m_cams.size());
+	Eigen::VectorXi candiCnt(m_cams.size());//每台相机的视图中有多少个人
 	for (int view = 0; view < m_cams.size(); view++)
 		candiCnt[view] = int(m_personsMapByView[view].size());
 	Proposal(candiCnt, 0, m_personProposals);
@@ -273,15 +277,17 @@ float Associater::CalcProposalLoss(const int& personProposalIdx)
 
 	float loss = 0.f;
 
-	std::vector<float> epiLosses;
+	std::vector<float> epiLosses;//投影线误差
 	for (int viewA = 0; viewA < m_cams.size() - 1 && valid; viewA++) {
 		if (proposal[viewA] == -1)
 			continue;
 		const Eigen::VectorXi& personMapA = m_personsMapByView[viewA][proposal[viewA]];
+		//viewA相机中，取第proposal[viewA]个人
 		for (int viewB = viewA + 1; viewB < m_cams.size() && valid; viewB++) {
 			if (proposal[viewB] == -1)
 				continue;
 			const Eigen::VectorXi& personMapB = m_personsMapByView[viewB][proposal[viewB]];
+			//viewB相机中，取第proposal[viewB]个人，认为这两个是同一个人的不同投影
 
 			for (int jIdx = 0; jIdx < GetSkelDef().jointSize && valid; jIdx++) {
 				if (personMapA[jIdx] == -1 || personMapB[jIdx] == -1)
@@ -303,7 +309,7 @@ float Associater::CalcProposalLoss(const int& personProposalIdx)
 		loss += m_wEpi * std::accumulate(epiLosses.begin(), epiLosses.end(), 0.f) / float(epiLosses.size());
 
 	// paf loss
-	std::vector<float> pafLosses;
+	std::vector<float> pafLosses;//连接路径损失
 	for (int view = 0; view < m_cams.size() && valid; view++) {
 		if (proposal[view] == -1)
 			continue;
@@ -312,13 +318,14 @@ float Associater::CalcProposalLoss(const int& personProposalIdx)
 			const Eigen::Vector2i candi(personMap[GetSkelDef().pafDict(0, pafIdx)], personMap[GetSkelDef().pafDict(1, pafIdx)]);
 			if (candi.x() >= 0 && candi.y() >= 0)
 				pafLosses.emplace_back(1.f - m_detections[view].pafs[pafIdx](candi.x(), candi.y()));
+				//损失 = 1 - 连接概率
 			else
 				pafLosses.emplace_back(1.f);
 		}
 	}
 	if (pafLosses.size() > 0)
 		loss += m_wPaf * std::accumulate(pafLosses.begin(), pafLosses.end(), 0.f) / float(pafLosses.size());
-
+	// 总损失 = 投影线误差 + 连接路径损失
 	// view loss
 	loss += m_wView * (1.f - MathUtil::Welsch(m_cViewCnt, (proposal.array() >= 0).count()));
 	return loss;
@@ -333,6 +340,11 @@ void Associater::ClusterPersons3D()
 	std::vector<std::pair<float, int>> losses;
 	for (int personProposalIdx = 0; personProposalIdx < m_personProposals.size(); personProposalIdx++) {
 		const float loss = CalcProposalLoss(personProposalIdx);
+		const Eigen::VectorXi& proposal = m_personProposals[personProposalIdx];//某一个可能分配
+		for (int ii = 0; ii < proposal.size(); ii++)
+			std::cout << proposal[ii] << " ";
+		std::cout << std::endl;
+
 		if (loss > 0.f)
 			losses.emplace_back(std::make_pair(loss, personProposalIdx));
 	}
@@ -341,14 +353,16 @@ void Associater::ClusterPersons3D()
 	std::sort(losses.begin(), losses.end());
 	std::vector<Eigen::VectorXi> availableMap(m_cams.size());
 	for (int view = 0; view < m_cams.size(); view++)
-		availableMap[view] = Eigen::VectorXi::Constant(m_personsMapByView[view].size(), 1);
+		availableMap[view] = Eigen::VectorXi::Constant(m_personsMapByView[view].size(), 1);//设置为未被分配（1）
+		//记录某个视图中的所有2D人是否已被分配
 
 	for (const auto& loss : losses) {
-		const Eigen::VectorXi& personProposal = m_personProposals[loss.second];
+		const Eigen::VectorXi& personProposal = m_personProposals[loss.second];//某一个可能分配
 
 		bool available = true;
 		for (int i = 0; i < personProposal.size() && available; i++)
 			available &= (personProposal[i] == -1 || availableMap[i][personProposal[i]]);
+		//在该种假设下，存在一个视图，这个图里面有这个人并且已被分配，那么说明这种分配是不可用的
 
 		if (!available)
 			continue;
@@ -356,17 +370,20 @@ void Associater::ClusterPersons3D()
 		std::vector<Eigen::VectorXi> personMap(m_cams.size(), Eigen::VectorXi::Constant(GetSkelDef().jointSize, -1));
 		for (int view = 0; view < m_cams.size(); view++)
 			if (personProposal[view] != -1) {
-				personMap[view] = m_personsMapByView[view][personProposal[view]];
+				personMap[view] = m_personsMapByView[view][personProposal[view]];//该种假设下，这个视图中这个人的连接表
 				for (int jIdx = 0; jIdx < GetSkelDef().jointSize; jIdx++) {
 					const int candiIdx = personMap[view][jIdx];
 					if (candiIdx >= 0)
-						m_assignMap[view][jIdx][candiIdx] = m_personsMapByIdx.size();
+						m_assignMap[view][jIdx][candiIdx] = m_personsMapByIdx.size();//某个视图，某类点，某个点属于某个3D人
 				}
-				availableMap[view][personProposal[view]] = false;
+				availableMap[view][personProposal[view]] = false;//这个视图下的这个人已被分配
 			}
 		m_personsMapByIdx.emplace_back(personMap);
 	}
 
+	std::cout << "personsMap_size: " << m_personsMapByIdx.size() << std::endl;
+
+	// 有可能未被分配全，则将其他可能存在的人也加入
 	// add remain persons
 	for (int view = 0; view < m_cams.size(); view++) {
 		for (int i = 0; i < m_personsMapByView[view].size(); i++) {
@@ -383,6 +400,7 @@ void Associater::ClusterPersons3D()
 void Associater::ConstructPersons()
 {
 	// 2D
+	// 把每个视图中，每个人、每类点对应的哪个点，以及路径进行标记
 	for (int view = 0; view < m_cams.size(); view++) {
 		m_persons2D[view].clear();
 		for (int pIdx = 0; pIdx < m_personsMapByIdx.size(); pIdx++) {

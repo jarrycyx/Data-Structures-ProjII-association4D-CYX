@@ -73,10 +73,11 @@ std::vector<std::vector<SkelDetection>> ParseDetections(const std::string& filen
 				const int jAIdx = GetSkelDef().pafDict(0, pafIdx);//这条边的一个顶点
 				const int jBIdx = GetSkelDef().pafDict(1, pafIdx);//另一个顶点
 				detection.pafs[pafIdx].resize(detection.joints[jAIdx].cols(), detection.joints[jBIdx].cols());
+				//std::cout << detection.joints[jAIdx].cols() << " " << detection.joints[jBIdx].cols() << std::endl;
 				//该图中检测出很多个该类边连接的顶点，比如2+2，3+3个
 				//取得连接概率关系2x2，3x3，但n个人只会有n条边
 				for (int i = 0; i < detection.pafs[pafIdx].rows(); i++)
-					for (int j = 0; j < detection.pafs[pafIdx].cols(); j++)
+					for (int j = 0; j < detection.pafs[pafIdx].cols(); j++) 
 						fs >> detection.pafs[pafIdx](i, j);
 			}
 		}
@@ -95,7 +96,7 @@ void SaveResult(const int& frameIdx, const std::vector<cv::Mat>& images, const s
 	const Eigen::Vector2i imgSize(images.begin()->cols, images.begin()->rows);
 	const int jointRadius = round(imgSize.x() *  1.f / 128.f);
 	const int pafThickness = round(imgSize.x() * 1.f / 256.f);
-	const float textScale = sqrtf(imgSize.x() / 512.f);
+	const float textScale = sqrtf(imgSize.x() / 1024.f);
 	cv::Mat detectImg(rows*imgSize.y(), cols*imgSize.x(), CV_8UC3);
 	cv::Mat assocImg(rows*imgSize.y(), cols*imgSize.x(), CV_8UC3);
 	cv::Mat reprojImg(rows*imgSize.y(), cols*imgSize.x(), CV_8UC3);
@@ -115,6 +116,7 @@ void SaveResult(const int& frameIdx, const std::vector<cv::Mat>& images, const s
 				for (int jbCandiIdx = 0; jbCandiIdx < detection.joints[jbIdx].cols(); jbCandiIdx++) {
 					if (detection.joints[jaIdx](2, jaCandiIdx) > 0.f && detection.joints[jbIdx](2, jbCandiIdx) > 0.f) {
 						const int thickness = round(detection.pafs[pafIdx](jaCandiIdx, jbCandiIdx)* pafThickness);
+						//连接概率不为0则画出的线可见
 						if (thickness > 0) {
 							const cv::Point jaPos(round(detection.joints[jaIdx](0, jaCandiIdx)*imgSize.x() - 0.5f), round(detection.joints[jaIdx](1, jaCandiIdx)*imgSize.y() - 0.5f));
 							const cv::Point jbPos(round(detection.joints[jbIdx](0, jbCandiIdx)*imgSize.x() - 0.5f), round(detection.joints[jbIdx](1, jbCandiIdx)*imgSize.y() - 0.5f));
@@ -130,8 +132,8 @@ void SaveResult(const int& frameIdx, const std::vector<cv::Mat>& images, const s
 				const cv::Point jPos(round(detection.joints[jIdx](0, candiIdx)*imgSize.x() - 0.5f), round(detection.joints[jIdx](1, candiIdx)*imgSize.y() - 0.5f));
 				const int radius = round(detection.joints[jIdx](2, candiIdx) * jointRadius);
 				if (radius > 0) {
-					cv::circle(detectImg(roi), jPos, radius, ColorUtil::GetColor("gray"), 1);
-					cv::putText(detectImg(roi), std::to_string(jIdx), jPos, cv::FONT_HERSHEY_PLAIN, textScale, ColorUtil::GetColor("gray"));
+					cv::circle(detectImg(roi), jPos, radius, ColorUtil::GetColor("white"), 2);
+					cv::putText(detectImg(roi), std::to_string(jIdx), jPos, cv::FONT_ITALIC, textScale, ColorUtil::GetColor("white"));
 				}
 			}
 		}
@@ -145,7 +147,7 @@ void SaveResult(const int& frameIdx, const std::vector<cv::Mat>& images, const s
 					continue;
 				cv::Point jPos(round(person.joints(0, jIdx)*imgSize.x() - 0.5f), round(person.joints(1, jIdx)*imgSize.y() - 0.5f));
 				cv::circle(assocImg(roi), jPos, jointRadius, color, -1);
-				cv::putText(assocImg(roi), std::to_string(jIdx), jPos, cv::FONT_HERSHEY_PLAIN, textScale, color);
+				cv::putText(assocImg(roi), std::to_string(jIdx), jPos, cv::FONT_ITALIC, textScale, ColorUtil::GetColor("white"));
 			}
 
 			for (int pafIdx = 0; pafIdx < GetSkelDef().pafSize; pafIdx++) {
@@ -168,7 +170,7 @@ void SaveResult(const int& frameIdx, const std::vector<cv::Mat>& images, const s
 					continue;
 				cv::Point jPos(round(person.joints(0, jIdx)*imgSize.x() - 0.5f), round(person.joints(1, jIdx)*imgSize.y() - 0.5f));
 				cv::circle(reprojImg(roi), jPos, jointRadius, color, -1);
-				cv::putText(reprojImg(roi), std::to_string(jIdx), jPos, cv::FONT_HERSHEY_PLAIN, textScale, color);
+				cv::putText(reprojImg(roi), std::to_string(jIdx), jPos, cv::FONT_ITALIC, textScale, ColorUtil::GetColor("white"));
 			}
 
 			for (int pafIdx = 0; pafIdx < GetSkelDef().pafSize; pafIdx++) {
@@ -182,9 +184,9 @@ void SaveResult(const int& frameIdx, const std::vector<cv::Mat>& images, const s
 			}
 		}
 	}
-	cv::imwrite("../debug/detect/" + std::to_string(frameIdx) + ".jpg", detectImg);
-	cv::imwrite("../debug/assoc/" + std::to_string(frameIdx) + ".jpg", assocImg);
-	cv::imwrite("../debug/reproj/" + std::to_string(frameIdx) + ".jpg", reprojImg);
+	cv::imwrite("../debug/detect/dt_" + std::to_string(frameIdx) + ".jpg", detectImg);
+	cv::imwrite("../debug/assoc/as_" + std::to_string(frameIdx) + ".jpg", assocImg);
+	cv::imwrite("../debug/reproj/rp_" + std::to_string(frameIdx) + ".jpg", reprojImg);
 }
 
 
@@ -200,28 +202,31 @@ int main()
 		cameras.emplace_back(iter.second);
 		videos.emplace_back(cv::VideoCapture("../data/" + iter.first + ".mpeg"));
 		rawImgs.emplace_back(cv::Mat());
-	}
+	}//52ms
 
 	std::vector<std::vector<SkelDetection>> detections = ParseDetections("../data/detection.txt");
 
 	// init
 	Associater associater(cameras);
 
-	
-	for (int frameIdx = 0; frameIdx < detections.size(); frameIdx++) {
+	int frameIdx = 0;
+	//for (int frameIdx = 0; frameIdx < detections.size(); frameIdx++) {
 		for (int camIdx = 0; camIdx < cameras.size(); camIdx++)
 			videos[camIdx] >> rawImgs[camIdx];
 
-		associater.SetDetection(detections[frameIdx]);//设置数据的格式
-		associater.ConstructJointRays();//根据2D数据，计算当前帧，每台相机成像的3D坐标（多解）
-		associater.ConstructJointEpiEdges();//计算当前帧，相邻两台相机的投影线间距
-		associater.ClusterPersons2D();//推断2D图形中属于同一个人的点
-		associater.ProposalCollocation();
-		associater.ClusterPersons3D();
-		associater.ConstructPersons();
-
+		associater.SetDetection(detections[frameIdx]);//设置数据的格式，1ms
+		associater.ConstructJointRays();//根据2D数据，计算当前帧，每台相机成像的3D坐标投影方向，2ms
+		associater.ConstructJointEpiEdges();//计算当前帧，相邻两台相机的投影线间距，2ms
+		associater.ClusterPersons2D();//推断2D图形中属于同一个人的点，1ms
+		associater.ProposalCollocation();//算出所有可能的分配，注意是所有3D人、所有视图、视图上的所有2D人的可能分配，4ms
+		associater.ClusterPersons3D();//暴力推断多视图的每个点分别都是哪个人的，2ms
+		associater.ConstructPersons();//完成对每个人的每个点的标记，14ms
+		//
 		std::cout << std::to_string(frameIdx) << std::endl;
 		SaveResult(frameIdx, rawImgs, detections[frameIdx], cameras, associater.GetPersons2D(), associater.GetPersons3D());
-	}
+	//}
+
+		int a;
+		std::cin >> a;
 	return 0;
 }

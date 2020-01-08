@@ -50,6 +50,7 @@ struct Person3D
 		joints = Eigen::Matrix4Xf::Zero(4, GetSkelDef().jointSize);
 	}
 
+	//º∆À„Õ∂”∞
 	Person2D ProjSkel(const Eigen::Matrix<float, 3, 4>& proj) const {
 		Person2D person;
 		person.joints.topRows(2) = (proj* (joints.topRows(3).colwise().homogeneous())).colwise().hnormalized();
