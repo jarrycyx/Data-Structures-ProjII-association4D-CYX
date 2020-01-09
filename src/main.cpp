@@ -225,31 +225,33 @@ void SaveMotionCsv(MotionTracking* motionTracking)
 	std::ofstream csvOut;
 	csvOut.open("../debug/MotionData.csv", std::ios::out);
 
-	for (int i = 0; i < motionTracking->currentFrame; i++)
+	for (int frameIdx = 0; frameIdx < motionTracking->currentFrame; frameIdx++)
 	{
 
-		csvOut << "Frame " << i << std::endl;
+		csvOut << "Frame " << frameIdx << std::endl;
 
 		for (int i = 0; i < GetSkelDef().jointSize; i++)
 			csvOut << i << "x," << i << "y," << i << "z," << i << "vx," << i << "vy," << i << "vz," << i << "ax," << i << "ay," << i << "az,";
 		csvOut << std::endl;
-		//for (int i = 0; i < motionTracking->persons; i++)
-		//{
-			Person3DMotion* thisPerson = motionTracking->persons[0];
-			for (int jIdx = 0; jIdx < GetSkelDef().jointSize; jIdx++)
-			{
-				csvOut << thisPerson->personInFrames[i].joints(0, jIdx) << ",";
-				csvOut << thisPerson->personInFrames[i].joints(1, jIdx) << ",";
-				csvOut << thisPerson->personInFrames[i].joints(2, jIdx) << ",";
-				csvOut << thisPerson->jointsVelocity[i][jIdx](0) << ",";
-				csvOut << thisPerson->jointsVelocity[i][jIdx](1) << ",";
-				csvOut << thisPerson->jointsVelocity[i][jIdx](2) << ",";
-				csvOut << thisPerson->jointsAcceleration[i][jIdx](0, 0) << ",";
-				csvOut << thisPerson->jointsAcceleration[i][jIdx](1, 0) << ",";
-				csvOut << thisPerson->jointsAcceleration[i][jIdx](2, 0) << ",";
+		for (int p = 0; p < motionTracking->persons.size(); p++)
+		{
+			Person3DMotion* thisPerson = motionTracking->persons[p];
+			if (thisPerson->inViewFlag[frameIdx]) {
+				for (int jIdx = 0; jIdx < GetSkelDef().jointSize; jIdx++)
+				{
+					csvOut << thisPerson->jointsLocation[frameIdx][jIdx](0) << ",";
+					csvOut << thisPerson->jointsLocation[frameIdx][jIdx](1) << ",";
+					csvOut << thisPerson->jointsLocation[frameIdx][jIdx](2) << ",";
+					csvOut << thisPerson->jointsVelocity[frameIdx][jIdx](0) << ",";
+					csvOut << thisPerson->jointsVelocity[frameIdx][jIdx](1) << ",";
+					csvOut << thisPerson->jointsVelocity[frameIdx][jIdx](2) << ",";
+					csvOut << thisPerson->jointsAcceleration[frameIdx][jIdx](0) << ",";
+					csvOut << thisPerson->jointsAcceleration[frameIdx][jIdx](1) << ",";
+					csvOut << thisPerson->jointsAcceleration[frameIdx][jIdx](2) << ",";
+				}
+				csvOut << std::endl;
 			}
-			csvOut << std::endl;
-		//}
+		}
 	}
 	csvOut.close();
 
@@ -275,18 +277,18 @@ int main()
 	Associater associater(cameras);
 	MotionTracking motionTracking;
 
-	int frameIdx = 0;
 	for (int frameIdx = 0; frameIdx < detections.size(); frameIdx++) {
+		//for (int frameIdx = 0; frameIdx < 50; frameIdx++) {
 		for (int camIdx = 0; camIdx < cameras.size(); camIdx++)
 			videos[camIdx] >> rawImgs[camIdx];
 
 		associater.SetDetection(detections[frameIdx]);//设置数据的格式，1ms
 		associater.ConstructJointRays();//根据2D数据，计算当前帧，每台相机成像的3D坐标投影方向，2ms
-		associater.ConstructJointEpiEdges();//计算当前帧，相邻两台相机的投影线间距，2ms
-		associater.ClusterPersons2D();//推断2D图形中属于同一个人的点，1ms
-		associater.ProposalCollocation();//算出所有可能的分配，注意是所有3D人、所有视图、视图上的所有2D人的可能分配，4ms
-		associater.ClusterPersons3D();//暴力推断多视图的每个点分别都是哪个人的，2ms
-		associater.ConstructPersons();//完成对每个人的每个点的标记，14ms
+		associater.ConstructJointEpiEdges();//计算当前帧，相邻两台相机的投影线间距，3ms
+		associater.ClusterPersons2D();//推断2D图形中属于同一个人的点，2ms
+		associater.ProposalCollocation();//算出所有可能的分配，注意是所有3D人、所有视图、视图上的所有2D人的可能分配，1ms
+		associater.ClusterPersons3D();//暴力推断多视图的每个点分别都是哪个人的，7ms
+		associater.ConstructPersons();//完成对每个人的每个点的标记，11ms
 		//
 		std::cout << std::to_string(frameIdx) << std::endl;
 		//SaveResult(frameIdx, rawImgs, detections[frameIdx], cameras, associater.GetPersons2D(), associater.GetPersons3D());

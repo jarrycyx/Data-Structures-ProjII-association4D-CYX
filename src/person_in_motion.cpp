@@ -6,12 +6,13 @@ Person3DMotion::Person3DMotion()
 {
 	for (int i = 0; i < FRAME_SIZE; i++)
 	{
+		inViewFlag[i] = false;
 		jointsAcceleration[i].resize(GetSkelDef().jointSize);
 		jointsVelocity[i].resize(GetSkelDef().jointSize);
 		for (int jIdx = 0; jIdx < GetSkelDef().jointSize; jIdx++)
 		{
-			jointsAcceleration[i][jIdx] = Eigen::VectorXd::Constant(3, -1);
-			jointsVelocity[i][jIdx] = Eigen::VectorXd::Constant(3, -1);
+			jointsAcceleration[i][jIdx] = Eigen::VectorXd::Constant(3, 0);
+			jointsVelocity[i][jIdx] = Eigen::VectorXd::Constant(3, 0);
 		}
 	}
 }
@@ -19,23 +20,23 @@ Person3DMotion::Person3DMotion()
 
 void Person3DMotion::CalculateNewFrameMotion(int frameIdx, Person3D person)
 {
-	personInFrames.emplace_back(person);
+	personInFrames[frameIdx] = person;
+	inViewFlag[frameIdx] = true;
 	for (int jIdx = 0; jIdx < GetSkelDef().jointSize; jIdx++)
 	{
-		if (frameIdx != 0)
+		Eigen::VectorXd newLoc;
+		newLoc.resize(3);
+		jointsLocation[frameIdx].push_back(newLoc);
+		jointsLocation[frameIdx][jIdx][0] = personInFrames[frameIdx].joints(0, jIdx);
+		jointsLocation[frameIdx][jIdx][1] = personInFrames[frameIdx].joints(1, jIdx);
+		jointsLocation[frameIdx][jIdx][2] = personInFrames[frameIdx].joints(2, jIdx);
+		if (frameIdx != 0 && inViewFlag[frameIdx - 1])
 		{
-			Eigen::VectorXd r1, r2;
-			r1.resize(3);
-			r2.resize(3);
-			r2[0] = personInFrames[frameIdx].joints(0, jIdx);
-			r2[1] = personInFrames[frameIdx].joints(1, jIdx);
-			r2[2] = personInFrames[frameIdx].joints(2, jIdx);
-			r2[0] = personInFrames[int(frameIdx) - 1].joints(0, jIdx);
-			r2[1] = personInFrames[int(frameIdx) - 1].joints(1, jIdx);
-			r2[2] = personInFrames[int(frameIdx) - 1].joints(2, jIdx);
+			Eigen::VectorXd r2 = jointsLocation[frameIdx][jIdx];
+			Eigen::VectorXd r1 = jointsLocation[frameIdx - 1][jIdx];
 			jointsVelocity[frameIdx][jIdx] = r2 - r1;
 		}
-		if (frameIdx > 1)
+		if (frameIdx > 1 && inViewFlag[frameIdx - 1])
 		{
 			Eigen::VectorXd v2 = jointsVelocity[frameIdx][jIdx];
 			Eigen::VectorXd v1 = jointsVelocity[frameIdx - 1][jIdx];
