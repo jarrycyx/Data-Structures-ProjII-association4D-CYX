@@ -3,6 +3,8 @@
 #include <opencv2/opencv.hpp>
 #include <json/json.h>
 #include <fstream>
+#include <iostream>
+#include "motion_tracking.h"
 
 //test
 
@@ -48,6 +50,12 @@ std::map<std::string, Camera> ParseCameras(const std::string& filename)
 
 std::vector<std::vector<SkelDetection>> ParseDetections(const std::string& filename)
 {
+
+	std::ofstream csvOut;
+	csvOut.open("../debug/FramesData.csv", std::ios::out);
+	csvOut << "";
+	csvOut.close();
+
 	std::ifstream fs(filename);
 	if (!fs.is_open()) {
 		std::cerr << "json file not exist: " << filename << std::endl;
@@ -77,7 +85,7 @@ std::vector<std::vector<SkelDetection>> ParseDetections(const std::string& filen
 				//该图中检测出很多个该类边连接的顶点，比如2+2，3+3个
 				//取得连接概率关系2x2，3x3，但n个人只会有n条边
 				for (int i = 0; i < detection.pafs[pafIdx].rows(); i++)
-					for (int j = 0; j < detection.pafs[pafIdx].cols(); j++) 
+					for (int j = 0; j < detection.pafs[pafIdx].cols(); j++)
 						fs >> detection.pafs[pafIdx](i, j);
 			}
 		}
@@ -94,15 +102,15 @@ void SaveResult(const int& frameIdx, const std::vector<cv::Mat>& images, const s
 	const int rows = 2;
 	const int cols = (cameras.size() + rows - 1) / rows;
 	const Eigen::Vector2i imgSize(images.begin()->cols, images.begin()->rows);
-	const int jointRadius = round(imgSize.x() *  1.f / 128.f);
+	const int jointRadius = round(imgSize.x() * 1.f / 128.f);
 	const int pafThickness = round(imgSize.x() * 1.f / 256.f);
 	const float textScale = sqrtf(imgSize.x() / 1024.f);
-	cv::Mat detectImg(rows*imgSize.y(), cols*imgSize.x(), CV_8UC3);
-	cv::Mat assocImg(rows*imgSize.y(), cols*imgSize.x(), CV_8UC3);
-	cv::Mat reprojImg(rows*imgSize.y(), cols*imgSize.x(), CV_8UC3);
+	cv::Mat detectImg(rows * imgSize.y(), cols * imgSize.x(), CV_8UC3);
+	cv::Mat assocImg(rows * imgSize.y(), cols * imgSize.x(), CV_8UC3);
+	cv::Mat reprojImg(rows * imgSize.y(), cols * imgSize.x(), CV_8UC3);
 
 	for (int camIdx = 0; camIdx < cameras.size(); camIdx++) {
-		cv::Rect roi(camIdx%cols * imgSize.x(), camIdx / cols * imgSize.y(), imgSize.x(), imgSize.y());
+		cv::Rect roi(camIdx % cols * imgSize.x(), camIdx / cols * imgSize.y(), imgSize.x(), imgSize.y());
 		images[camIdx].copyTo(detectImg(roi));
 		images[camIdx].copyTo(assocImg(roi));
 		images[camIdx].copyTo(reprojImg(roi));
@@ -115,21 +123,21 @@ void SaveResult(const int& frameIdx, const std::vector<cv::Mat>& images, const s
 			for (int jaCandiIdx = 0; jaCandiIdx < detection.joints[jaIdx].cols(); jaCandiIdx++) {
 				for (int jbCandiIdx = 0; jbCandiIdx < detection.joints[jbIdx].cols(); jbCandiIdx++) {
 					if (detection.joints[jaIdx](2, jaCandiIdx) > 0.f && detection.joints[jbIdx](2, jbCandiIdx) > 0.f) {
-						const int thickness = round(detection.pafs[pafIdx](jaCandiIdx, jbCandiIdx)* pafThickness);
+						const int thickness = round(detection.pafs[pafIdx](jaCandiIdx, jbCandiIdx) * pafThickness);
 						//连接概率不为0则画出的线可见
 						if (thickness > 0) {
-							const cv::Point jaPos(round(detection.joints[jaIdx](0, jaCandiIdx)*imgSize.x() - 0.5f), round(detection.joints[jaIdx](1, jaCandiIdx)*imgSize.y() - 0.5f));
-							const cv::Point jbPos(round(detection.joints[jbIdx](0, jbCandiIdx)*imgSize.x() - 0.5f), round(detection.joints[jbIdx](1, jbCandiIdx)*imgSize.y() - 0.5f));
+							const cv::Point jaPos(round(detection.joints[jaIdx](0, jaCandiIdx) * imgSize.x() - 0.5f), round(detection.joints[jaIdx](1, jaCandiIdx) * imgSize.y() - 0.5f));
+							const cv::Point jbPos(round(detection.joints[jbIdx](0, jbCandiIdx) * imgSize.x() - 0.5f), round(detection.joints[jbIdx](1, jbCandiIdx) * imgSize.y() - 0.5f));
 							cv::line(detectImg(roi), jaPos, jbPos, ColorUtil::GetColor("gray"), thickness);
 						}
 					}
 				}
 			}
 		}
-			
+
 		for (int jIdx = 0; jIdx < GetSkelDef().jointSize; jIdx++) {
 			for (int candiIdx = 0; candiIdx < detection.joints[jIdx].cols(); candiIdx++) {
-				const cv::Point jPos(round(detection.joints[jIdx](0, candiIdx)*imgSize.x() - 0.5f), round(detection.joints[jIdx](1, candiIdx)*imgSize.y() - 0.5f));
+				const cv::Point jPos(round(detection.joints[jIdx](0, candiIdx) * imgSize.x() - 0.5f), round(detection.joints[jIdx](1, candiIdx) * imgSize.y() - 0.5f));
 				const int radius = round(detection.joints[jIdx](2, candiIdx) * jointRadius);
 				if (radius > 0) {
 					cv::circle(detectImg(roi), jPos, radius, ColorUtil::GetColor("white"), 2);
@@ -145,7 +153,7 @@ void SaveResult(const int& frameIdx, const std::vector<cv::Mat>& images, const s
 			for (int jIdx = 0; jIdx < GetSkelDef().jointSize; jIdx++) {
 				if (person.joints(2, jIdx) < FLT_EPSILON)
 					continue;
-				cv::Point jPos(round(person.joints(0, jIdx)*imgSize.x() - 0.5f), round(person.joints(1, jIdx)*imgSize.y() - 0.5f));
+				cv::Point jPos(round(person.joints(0, jIdx) * imgSize.x() - 0.5f), round(person.joints(1, jIdx) * imgSize.y() - 0.5f));
 				cv::circle(assocImg(roi), jPos, jointRadius, color, -1);
 				cv::putText(assocImg(roi), std::to_string(jIdx), jPos, cv::FONT_ITALIC, textScale, ColorUtil::GetColor("white"));
 			}
@@ -153,9 +161,9 @@ void SaveResult(const int& frameIdx, const std::vector<cv::Mat>& images, const s
 			for (int pafIdx = 0; pafIdx < GetSkelDef().pafSize; pafIdx++) {
 				const int jaIdx = GetSkelDef().pafDict(0, pafIdx);
 				const int jbIdx = GetSkelDef().pafDict(1, pafIdx);
-				if (person.joints(2, jaIdx) > FLT_EPSILON && person.joints(2, jbIdx) > FLT_EPSILON) {
-					const cv::Point jaPos(round(person.joints(0, jaIdx)*imgSize.x() - 0.5f), round(person.joints(1, jaIdx)*imgSize.y() - 0.5f));
-					const cv::Point jbPos(round(person.joints(0, jbIdx)*imgSize.x() - 0.5f), round(person.joints(1, jbIdx)*imgSize.y() - 0.5f));
+				if (person.joints(2, jaIdx) > FLT_EPSILON&& person.joints(2, jbIdx) > FLT_EPSILON) {
+					const cv::Point jaPos(round(person.joints(0, jaIdx) * imgSize.x() - 0.5f), round(person.joints(1, jaIdx) * imgSize.y() - 0.5f));
+					const cv::Point jbPos(round(person.joints(0, jbIdx) * imgSize.x() - 0.5f), round(person.joints(1, jbIdx) * imgSize.y() - 0.5f));
 					cv::line(assocImg(roi), jaPos, jbPos, color, pafThickness);
 				}
 			}
@@ -168,7 +176,7 @@ void SaveResult(const int& frameIdx, const std::vector<cv::Mat>& images, const s
 			for (int jIdx = 0; jIdx < GetSkelDef().jointSize; jIdx++) {
 				if (person.joints(2, jIdx) < FLT_EPSILON)
 					continue;
-				cv::Point jPos(round(person.joints(0, jIdx)*imgSize.x() - 0.5f), round(person.joints(1, jIdx)*imgSize.y() - 0.5f));
+				cv::Point jPos(round(person.joints(0, jIdx) * imgSize.x() - 0.5f), round(person.joints(1, jIdx) * imgSize.y() - 0.5f));
 				cv::circle(reprojImg(roi), jPos, jointRadius, color, -1);
 				cv::putText(reprojImg(roi), std::to_string(jIdx), jPos, cv::FONT_ITALIC, textScale, ColorUtil::GetColor("white"));
 			}
@@ -176,9 +184,9 @@ void SaveResult(const int& frameIdx, const std::vector<cv::Mat>& images, const s
 			for (int pafIdx = 0; pafIdx < GetSkelDef().pafSize; pafIdx++) {
 				const int jaIdx = GetSkelDef().pafDict(0, pafIdx);
 				const int jbIdx = GetSkelDef().pafDict(1, pafIdx);
-				if (person.joints(2, jaIdx) > FLT_EPSILON && person.joints(2, jbIdx) > FLT_EPSILON) {
-					const cv::Point jaPos(round(person.joints(0, jaIdx)*imgSize.x() - 0.5f), round(person.joints(1, jaIdx)*imgSize.y() - 0.5f));
-					const cv::Point jbPos(round(person.joints(0, jbIdx)*imgSize.x() - 0.5f), round(person.joints(1, jbIdx)*imgSize.y() - 0.5f));
+				if (person.joints(2, jaIdx) > FLT_EPSILON&& person.joints(2, jbIdx) > FLT_EPSILON) {
+					const cv::Point jaPos(round(person.joints(0, jaIdx) * imgSize.x() - 0.5f), round(person.joints(1, jaIdx) * imgSize.y() - 0.5f));
+					const cv::Point jbPos(round(person.joints(0, jbIdx) * imgSize.x() - 0.5f), round(person.joints(1, jbIdx) * imgSize.y() - 0.5f));
 					cv::line(reprojImg(roi), jaPos, jbPos, color, pafThickness);
 				}
 			}
@@ -189,6 +197,63 @@ void SaveResult(const int& frameIdx, const std::vector<cv::Mat>& images, const s
 	cv::imwrite("../debug/reproj/rp_" + std::to_string(frameIdx) + ".jpg", reprojImg);
 }
 
+void SaveAssociationCsv(Associater* associater, int frameIndex)
+{
+	std::ofstream csvOut;
+	csvOut.open("../debug/FramesData.csv", std::ios::app);
+	csvOut << "Frame " << frameIndex << std::endl;
+
+	for (int i = 0; i < GetSkelDef().jointSize; i++)
+		csvOut << i << "x," << i << "y," << i << "z,";
+	csvOut << std::endl;
+	for (int i = 0; i < associater->GetPersons3D().size(); i++)
+	{
+		Person3D thisPerson = associater->GetPersons3D()[i];
+		for (int jIdx = 0; jIdx < GetSkelDef().jointSize; jIdx++)
+		{
+			csvOut << thisPerson.joints(0, jIdx) << ",";
+			csvOut << thisPerson.joints(1, jIdx) << ",";
+			csvOut << thisPerson.joints(2, jIdx) << ",";
+		}
+		csvOut << std::endl;
+	}
+
+}
+
+void SaveMotionCsv(MotionTracking* motionTracking)
+{
+	std::ofstream csvOut;
+	csvOut.open("../debug/MotionData.csv", std::ios::out);
+
+	for (int i = 0; i < motionTracking->currentFrame; i++)
+	{
+
+		csvOut << "Frame " << i << std::endl;
+
+		for (int i = 0; i < GetSkelDef().jointSize; i++)
+			csvOut << i << "x," << i << "y," << i << "z," << i << "vx," << i << "vy," << i << "vz," << i << "ax," << i << "ay," << i << "az,";
+		csvOut << std::endl;
+		//for (int i = 0; i < motionTracking->persons; i++)
+		//{
+			Person3DMotion* thisPerson = motionTracking->persons[0];
+			for (int jIdx = 0; jIdx < GetSkelDef().jointSize; jIdx++)
+			{
+				csvOut << thisPerson->personInFrames[i].joints(0, jIdx) << ",";
+				csvOut << thisPerson->personInFrames[i].joints(1, jIdx) << ",";
+				csvOut << thisPerson->personInFrames[i].joints(2, jIdx) << ",";
+				csvOut << thisPerson->jointsVelocity[i][jIdx](0) << ",";
+				csvOut << thisPerson->jointsVelocity[i][jIdx](1) << ",";
+				csvOut << thisPerson->jointsVelocity[i][jIdx](2) << ",";
+				csvOut << thisPerson->jointsAcceleration[i][jIdx](0, 0) << ",";
+				csvOut << thisPerson->jointsAcceleration[i][jIdx](1, 0) << ",";
+				csvOut << thisPerson->jointsAcceleration[i][jIdx](2, 0) << ",";
+			}
+			csvOut << std::endl;
+		//}
+	}
+	csvOut.close();
+
+}
 
 
 int main()
@@ -208,9 +273,10 @@ int main()
 
 	// init
 	Associater associater(cameras);
+	MotionTracking motionTracking;
 
 	int frameIdx = 0;
-	//for (int frameIdx = 0; frameIdx < detections.size(); frameIdx++) {
+	for (int frameIdx = 0; frameIdx < detections.size(); frameIdx++) {
 		for (int camIdx = 0; camIdx < cameras.size(); camIdx++)
 			videos[camIdx] >> rawImgs[camIdx];
 
@@ -223,10 +289,15 @@ int main()
 		associater.ConstructPersons();//完成对每个人的每个点的标记，14ms
 		//
 		std::cout << std::to_string(frameIdx) << std::endl;
-		SaveResult(frameIdx, rawImgs, detections[frameIdx], cameras, associater.GetPersons2D(), associater.GetPersons3D());
-	//}
+		//SaveResult(frameIdx, rawImgs, detections[frameIdx], cameras, associater.GetPersons2D(), associater.GetPersons3D());
+		motionTracking.AddFrame(&associater, frameIdx);
 
-		int a;
-		std::cin >> a;
+		SaveAssociationCsv(&associater, frameIdx);
+	}
+
+	SaveMotionCsv(&motionTracking);
+
+	int a;
+	std::cin >> a;
 	return 0;
 }

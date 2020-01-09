@@ -341,10 +341,9 @@ void Associater::ClusterPersons3D()
 	for (int personProposalIdx = 0; personProposalIdx < m_personProposals.size(); personProposalIdx++) {
 		const float loss = CalcProposalLoss(personProposalIdx);
 		const Eigen::VectorXi& proposal = m_personProposals[personProposalIdx];//某一个可能分配
-		for (int ii = 0; ii < proposal.size(); ii++)
+		/*for (int ii = 0; ii < proposal.size(); ii++)
 			std::cout << proposal[ii] << " ";
-		std::cout << std::endl;
-
+		std::cout << std::endl;*/
 		if (loss > 0.f)
 			losses.emplace_back(std::make_pair(loss, personProposalIdx));
 	}
