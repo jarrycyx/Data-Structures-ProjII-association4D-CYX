@@ -97,7 +97,7 @@ std::vector<std::vector<SkelDetection>> ParseDetections(const std::string& filen
 
 
 void SaveResult(const int& frameIdx, const std::vector<cv::Mat>& images, const std::vector<SkelDetection>& detections, const std::vector<Camera>& cameras,
-	const std::vector<std::vector<Person2D>>& persons2D, const std::vector<Person3D>& persons3D)
+	const std::vector<std::vector<Person2D>>& persons2D, const std::vector<Person3D>& persons3D, const MotionTracking& tracking)
 {
 	const int rows = 2;
 	const int cols = (cameras.size() + rows - 1) / rows;
@@ -108,12 +108,14 @@ void SaveResult(const int& frameIdx, const std::vector<cv::Mat>& images, const s
 	cv::Mat detectImg(rows * imgSize.y(), cols * imgSize.x(), CV_8UC3);
 	cv::Mat assocImg(rows * imgSize.y(), cols * imgSize.x(), CV_8UC3);
 	cv::Mat reprojImg(rows * imgSize.y(), cols * imgSize.x(), CV_8UC3);
+	cv::Mat trackImg(rows * imgSize.y(), cols * imgSize.x(), CV_8UC3);
 
 	for (int camIdx = 0; camIdx < cameras.size(); camIdx++) {
 		cv::Rect roi(camIdx % cols * imgSize.x(), camIdx / cols * imgSize.y(), imgSize.x(), imgSize.y());
 		images[camIdx].copyTo(detectImg(roi));
 		images[camIdx].copyTo(assocImg(roi));
 		images[camIdx].copyTo(reprojImg(roi));
+		images[camIdx].copyTo(trackImg(roi));
 
 		// draw detection
 		const SkelDetection& detection = detections[camIdx];
@@ -191,10 +193,37 @@ void SaveResult(const int& frameIdx, const std::vector<cv::Mat>& images, const s
 				}
 			}
 		}
+
+
+		// draw track
+		for (int pIdx = 0; pIdx < tracking.persons.size(); pIdx++) 
+			if (tracking.persons[pIdx]->inViewFlag[frameIdx] 
+				&& tracking.persons[pIdx]->totalCredits[frameIdx] > Person3DMotion::PEOPLE_DISP_THRES){
+				const Person2D& person = tracking.persons[pIdx]->ProjSkel(frameIdx, cameras[camIdx].proj);
+				const cv::Scalar& color = ColorUtil::GetColor(pIdx);
+				for (int jIdx = 0; jIdx < GetSkelDef().jointSize; jIdx++) {
+					if (person.joints(2, jIdx) < FLT_EPSILON)
+						continue;
+					cv::Point jPos(round(person.joints(0, jIdx) * imgSize.x() - 0.5f), round(person.joints(1, jIdx) * imgSize.y() - 0.5f));
+					cv::circle(trackImg(roi), jPos, jointRadius, color, -1);
+					cv::putText(trackImg(roi), std::to_string(jIdx), jPos, cv::FONT_ITALIC, textScale, ColorUtil::GetColor("white"));
+				}
+
+				for (int pafIdx = 0; pafIdx < GetSkelDef().pafSize; pafIdx++) {
+					const int jaIdx = GetSkelDef().pafDict(0, pafIdx);
+					const int jbIdx = GetSkelDef().pafDict(1, pafIdx);
+					if (person.joints(2, jaIdx) > FLT_EPSILON&& person.joints(2, jbIdx) > FLT_EPSILON) {
+						const cv::Point jaPos(round(person.joints(0, jaIdx) * imgSize.x() - 0.5f), round(person.joints(1, jaIdx) * imgSize.y() - 0.5f));
+						const cv::Point jbPos(round(person.joints(0, jbIdx) * imgSize.x() - 0.5f), round(person.joints(1, jbIdx) * imgSize.y() - 0.5f));
+						cv::line(trackImg(roi), jaPos, jbPos, color, pafThickness);
+					}
+				}
+			}
 	}
 	cv::imwrite("../debug/detect/dt_" + std::to_string(frameIdx) + ".jpg", detectImg);
 	cv::imwrite("../debug/assoc/as_" + std::to_string(frameIdx) + ".jpg", assocImg);
 	cv::imwrite("../debug/reproj/rp_" + std::to_string(frameIdx) + ".jpg", reprojImg);
+	cv::imwrite("../debug/track/tk_" + std::to_string(frameIdx) + ".jpg", trackImg);
 }
 
 void SaveAssociationCsv(Associater* associater, int frameIndex)
@@ -227,18 +256,23 @@ void SaveMotionCsv(MotionTracking* motionTracking)
 
 	for (int frameIdx = 0; frameIdx < motionTracking->currentFrame; frameIdx++)
 	{
+		std::ofstream frameCsv;
+		frameCsv.open(("../debug/FrameMotion/" + std::to_string(frameIdx) + ".csv"), std::ios::out);
 
 		csvOut << "Frame " << frameIdx << std::endl;
-
+		
+		csvOut << "TTLcre,";
 		for (int i = 0; i < GetSkelDef().jointSize; i++)
-			csvOut << i << "x," << i << "y," << i << "z," << i << "vx," << i << "vy," << i << "vz," << i << "ax," << i << "ay," << i << "az,";
+			csvOut << i << "cre," << i << "x," << i << "y," << i << "z," << i << "vx," << i << "vy," << i << "vz," << i << "ax," << i << "ay," << i << "az,";
 		csvOut << std::endl;
 		for (int p = 0; p < motionTracking->persons.size(); p++)
 		{
 			Person3DMotion* thisPerson = motionTracking->persons[p];
+			csvOut << thisPerson->totalCredits << ", ";
 			if (thisPerson->inViewFlag[frameIdx]) {
 				for (int jIdx = 0; jIdx < GetSkelDef().jointSize; jIdx++)
 				{
+					csvOut << thisPerson->jointsCredit[frameIdx][jIdx] << ",";
 					csvOut << thisPerson->jointsLocation[frameIdx][jIdx](0) << ",";
 					csvOut << thisPerson->jointsLocation[frameIdx][jIdx](1) << ",";
 					csvOut << thisPerson->jointsLocation[frameIdx][jIdx](2) << ",";
@@ -247,11 +281,19 @@ void SaveMotionCsv(MotionTracking* motionTracking)
 					csvOut << thisPerson->jointsVelocity[frameIdx][jIdx](2) << ",";
 					csvOut << thisPerson->jointsAcceleration[frameIdx][jIdx](0) << ",";
 					csvOut << thisPerson->jointsAcceleration[frameIdx][jIdx](1) << ",";
-					csvOut << thisPerson->jointsAcceleration[frameIdx][jIdx](2) << ",";
+					csvOut << thisPerson->jointsAcceleration[frameIdx][jIdx](2);
+					if (jIdx != GetSkelDef().jointSize - 1) csvOut << ",";
+
+					frameCsv << thisPerson->jointsLocation[frameIdx][jIdx](0) << ",";
+					frameCsv << thisPerson->jointsLocation[frameIdx][jIdx](1) << ",";
+					frameCsv << thisPerson->jointsLocation[frameIdx][jIdx](2);
+					if (jIdx != GetSkelDef().jointSize - 1) frameCsv << ",";
 				}
 				csvOut << std::endl;
+				frameCsv << std::endl;
 			}
 		}
+		frameCsv.close();
 	}
 	csvOut.close();
 
@@ -290,11 +332,14 @@ int main()
 		associater.ClusterPersons3D();//暴力推断多视图的每个点分别都是哪个人的，7ms
 		associater.ConstructPersons();//完成对每个人的每个点的标记，11ms
 		//
-		std::cout << std::to_string(frameIdx) << std::endl;
-		//SaveResult(frameIdx, rawImgs, detections[frameIdx], cameras, associater.GetPersons2D(), associater.GetPersons3D());
+		std::cout << "Frame Idx:" << std::to_string(frameIdx) << std::endl;
 		motionTracking.AddFrame(&associater, frameIdx);
 
 		SaveAssociationCsv(&associater, frameIdx);
+		//SaveResult(frameIdx, rawImgs, detections[frameIdx], cameras, associater.GetPersons2D(), 
+		//		associater.GetPersons3D(), motionTracking);
+
+		std::cout << std::endl;
 	}
 
 	SaveMotionCsv(&motionTracking);
@@ -303,3 +348,8 @@ int main()
 	std::cin >> a;
 	return 0;
 }
+
+
+/*
+ffmpeg -i C:\Users\jarrycyx\OneDrive\+ACademia\Data.Structures\PRJ2-CYX\Data.Structures.ProjII.association4D\debug\track\tk_%d.jpg -vcodec mpeg4 test.avi -r 25
+*/

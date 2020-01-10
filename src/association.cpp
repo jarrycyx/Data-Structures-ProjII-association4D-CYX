@@ -341,9 +341,6 @@ void Associater::ClusterPersons3D()
 	for (int personProposalIdx = 0; personProposalIdx < m_personProposals.size(); personProposalIdx++) {
 		const float loss = CalcProposalLoss(personProposalIdx);
 		const Eigen::VectorXi& proposal = m_personProposals[personProposalIdx];//某一个可能分配
-		/*for (int ii = 0; ii < proposal.size(); ii++)
-			std::cout << proposal[ii] << " ";
-		std::cout << std::endl;*/
 		if (loss > 0.f)
 			losses.emplace_back(std::make_pair(loss, personProposalIdx));
 	}
@@ -379,8 +376,6 @@ void Associater::ClusterPersons3D()
 			}
 		m_personsMapByIdx.emplace_back(personMap);
 	}
-
-	std::cout << "personsMap_size: " << m_personsMapByIdx.size() << std::endl;
 
 	// 有可能未被分配全，则将其他可能存在的人也加入
 	// add remain persons
@@ -435,7 +430,12 @@ void Associater::ConstructPersons()
 			}
 			triangulator.Solve();
 			if (triangulator.loss < m_triangulateThresh)
+			{
 				person.joints.col(jIdx) = triangulator.pos.homogeneous();
+				person.joints(3, jIdx) = 0;
+				for (int camIdx = 0; camIdx < m_cams.size(); camIdx++)
+					person.joints(3, jIdx) += m_persons2D[camIdx][personIdx].joints(2, jIdx);
+			}
 			else
 				person.joints.col(jIdx).setZero();
 		}
