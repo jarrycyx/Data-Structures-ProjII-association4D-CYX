@@ -70,7 +70,8 @@ void KuhnMunkrasAlgo::KM()
 }
 int KuhnMunkrasAlgo::solve(int* yToX, int* xToY)
 {
-
+    memset(yToX, -1, sizeof(yMatchX));
+    memset(xToY, -1, sizeof(xMatchY));
     memset(yMatchX, -1, sizeof(yMatchX));
     memset(xMatchY, -1, sizeof(xMatchY));
     memset(ly, 0, sizeof(ly));
@@ -86,12 +87,15 @@ int KuhnMunkrasAlgo::solve(int* yToX, int* xToY)
     int ans = 0;
     for (int i = 0; i < ny; ++i)
     {
-        yToX[i] = yMatchX[i];
-        if (yMatchX[i] != -1)
-            ans += G[yMatchX[i]][i];
+        if (G[yMatchX[i]][i] > (-MAX / 2)) {
+            yToX[i] = yMatchX[i];
+            if (yMatchX[i] != -1)
+                ans += G[yMatchX[i]][i];
+        }
     }
     for (int i = 0; i < nx; ++i)
-        xToY[i] = xMatchY[i];
+        if (G[i][xMatchY[i]] > (-MAX / 2))
+            xToY[i] = xMatchY[i];
 
     return ans;
 }

@@ -3,11 +3,11 @@
 #include <iostream>
 
 
-const int Person3DMotion::ERR_THRES_REBUILD = 1;
-const double Person3DMotion::ERR_THRES_CALIBRT = 0.1;
-const double Person3DMotion::CREDT_THRES_REBUILD = 4;
-const double Person3DMotion::CREDT_THRES_REBUILD = 4;
-const double Person3DMotion::PEOPLE_DISP_THRES = 5;
+const int Person3DMotion::ERR_THRES_REBUILD = 1;		//error大于此值认为完全不可用，需要重建
+const double Person3DMotion::ERR_THRES_CALIBRT = 0.1;	//error大于此值认为需要校准，小于此值认为是正常点
+const double Person3DMotion::PEOPLE_DISP_THRES = 5;		//credit大于此值认为可以显示
+const double Person3DMotion::JOINT_REBUILD_THRES = 2;	//可以用于重建的结点可靠度阈值
+
 
 
 Person3DMotion::Person3DMotion()
@@ -20,15 +20,94 @@ Person3DMotion::Person3DMotion()
 		inViewFlag[i] = false;
 		jointsAcceleration[i].resize(GetSkelDef().jointSize);
 		jointsVelocity[i].resize(GetSkelDef().jointSize);
+		jointsStatus[i].resize(GetSkelDef().jointSize);
+		rebuildStatus[i].resize(GetSkelDef().jointSize);
 		jointsCredit[i].resize(GetSkelDef().jointSize);
+		jointsFineLocation[i].resize(GetSkelDef().jointSize);
+		const_length.resize(const_skels_A.size());
 		for (int jIdx = 0; jIdx < GetSkelDef().jointSize; jIdx++)
 		{
 			jointsAcceleration[i][jIdx] = Eigen::VectorXd::Constant(3, 0);
 			jointsVelocity[i][jIdx] = Eigen::VectorXd::Constant(3, 0);
+			jointsFineLocation[i][jIdx] = Eigen::VectorXd::Constant(3, 0);
 			jointsCredit[i][jIdx] = 0;
+			jointsStatus[i][jIdx] = 0;
 		}
 	}
 }
+
+
+void Person3DMotion::dfsJoints(int frameIdx, int thisJoint)
+{
+	for (int cIdx = 0; cIdx < const_skels_A.size(); cIdx++)
+	{
+		if (const_skels_A[cIdx] == thisJoint)
+		{
+			if (rebuildStatus[frameIdx][const_skels_B[cIdx]] != 0)
+			{
+				jointsFineLocation[frameIdx][const_skels_B[cIdx]] = jointsLocation[frameIdx][const_skels_B[cIdx]];
+				if (jointsCredit[frameIdx - 1][const_skels_B[cIdx]] > JOINT_REBUILD_THRES)
+				{
+					Eigen::VectorXd lastRelativeVel = jointsVelocity[frameIdx - 1][const_skels_B[cIdx]] - jointsVelocity[frameIdx - 1][const_skels_A[cIdx]];
+					Eigen::VectorXd lastRelativeLoc = /*lastRelativeVel +*/ jointsFineLocation[frameIdx - 1][const_skels_B[cIdx]] - jointsFineLocation[frameIdx - 1][const_skels_A[cIdx]];
+					jointsFineLocation[frameIdx][const_skels_B[cIdx]] = jointsFineLocation[frameIdx][const_skels_A[cIdx]] + lastRelativeLoc;
+					rebuildStatus[frameIdx][const_skels_B[cIdx]] = 0;
+					dfsJoints(frameIdx, const_skels_B[cIdx]);
+				}
+			}
+			/*else if (rebuildStatus[frameIdx][const_skels_B[cIdx]] == 2)
+			{
+				if (jointsCredit[frameIdx - 1][const_skels_B[cIdx]] > JOINT_REBUILD_THRES)
+				{
+					Eigen::VectorXd thisRelativeVec = jointsVelocity[frameIdx][const_skels_B[cIdx]] - jointsVelocity[frameIdx][const_skels_A[cIdx]];
+					Eigen::VectorXd lastRelativeLoc = jointsLocation[frameIdx - 1][const_skels_B[cIdx]] - jointsLocation[frameIdx - 1][const_skels_A[cIdx]];
+					Eigen::VectorXd normalRelativeVec = thisRelativeVec.dot(lastRelativeLoc) * thisRelativeVec / (thisRelativeVec.dot(thisRelativeVec));
+					//法向相对运动速度
+					Eigen::VectorXd tangRelativeVec = thisRelativeVec - normalRelativeVec;
+					//切向相对运动速度
+					jointsFineLocation[frameIdx][const_skels_B[cIdx]] = jointsLocation[frameIdx][const_skels_A[cIdx]] + lastRelativeLoc + tangRelativeVec;
+					//这次A的位置 + 上次A指向B的向量 + 切向相对运动
+					rebuildStatus[frameIdx][const_skels_B[cIdx]] = 0;
+					dfsJoints(frameIdx, const_skels_B[cIdx]);
+				}
+			}*/
+		}
+	}
+
+}
+
+void Person3DMotion::RebuildPersonSkels(int frameIdx)
+{
+	bool hasEfficientJoint = false;
+	int startJoint = 0;
+	for (int jIdx = 0; jIdx < GetSkelDef().jointSize; jIdx++)
+		rebuildStatus[frameIdx][jIdx] = jointsStatus[frameIdx][jIdx];
+	for (int jIdx = 0; jIdx < GetSkelDef().jointSize; jIdx++)
+	{
+		if (jointsStatus[frameIdx][jIdx] == 0)
+		{
+			startJoint = jIdx;
+			hasEfficientJoint = true;
+		}
+		if (hasEfficientJoint)
+			dfsJoints(frameIdx, startJoint);
+		else
+		{
+			Eigen::VectorXd mainBodyVec = (jointsVelocity[frameIdx][0] + jointsVelocity[frameIdx][1] + jointsVelocity[frameIdx][2]) / 3;
+
+			for (int jIdx = 0; jIdx < GetSkelDef().jointSize; jIdx++)
+			{
+				jointsFineLocation[frameIdx][jIdx] = jointsFineLocation[frameIdx - 1][jIdx];
+				if (jointsCredit[frameIdx][0] + jointsCredit[frameIdx][0] + jointsCredit[frameIdx][0] > 4) 
+					jointsFineLocation[frameIdx][jIdx] += mainBodyVec;
+			}
+		}
+	}
+
+}
+
+
+
 
 
 //计算投影
@@ -54,6 +133,29 @@ Person2D Person3DMotion::ProjSkel(int frameIdx, const Eigen::Matrix<float, 3, 4>
 	return person;
 }
 
+//计算投影
+Person2D Person3DMotion::ProjSkelFineLocation(int frameIdx, const Eigen::Matrix<float, 3, 4>& proj) const {
+	Person2D person;
+	Eigen::Matrix4Xf joints;
+	joints = Eigen::Matrix4Xf::Zero(4, GetSkelDef().jointSize);
+	for (int jIdx = 0; jIdx < GetSkelDef().jointSize; jIdx++)
+	{
+		joints(0, jIdx) = jointsFineLocation[frameIdx][jIdx][0];
+		joints(1, jIdx) = jointsFineLocation[frameIdx][jIdx][1];
+		joints(2, jIdx) = jointsFineLocation[frameIdx][jIdx][2];
+		joints(3, jIdx) = (jointsFineLocation[frameIdx][jIdx][0] != 0
+			&& jointsFineLocation[frameIdx][jIdx][1] != 0
+			&& jointsFineLocation[frameIdx][jIdx][2] != 0);
+	}
+
+	person.joints.topRows(2) = (proj * (joints.topRows(3).colwise().homogeneous())).colwise().hnormalized();
+	person.joints.row(2) = joints.row(3);
+	for (int pafIdx = 0; pafIdx < GetSkelDef().pafSize; pafIdx++)
+		person.pafs[pafIdx] = person.joints(GetSkelDef().pafDict(0, pafIdx)) > FLT_EPSILON
+		&& person.joints(GetSkelDef().pafDict(1, pafIdx)) > FLT_EPSILON ? 1.f : 0.f;
+	return person;
+}
+
 void Person3DMotion::CalculateConstraintsSkels(int frameIdx, Person3D person)
 {
 	int consSize = const_skels_A.size();
@@ -61,8 +163,9 @@ void Person3DMotion::CalculateConstraintsSkels(int frameIdx, Person3D person)
 	{
 		int jointA = const_skels_A[cIdx], jointB = const_skels_B[cIdx];
 		Eigen::VectorXd delta = (jointsLocation[frameIdx][jointA] - jointsLocation[frameIdx][jointB]);
-		const_length[cIdx] = delta.norm();
-
+		if (const_length[cIdx] == 0) 
+			const_length[cIdx] = delta.norm();
+		else const_length[cIdx] = const_length[cIdx] * 0.9 + delta.norm() * 0.1;
 	}
 }
 
@@ -84,15 +187,17 @@ void Person3DMotion::CalculateNewFrameMotion(int frameIdx, Person3D person)
 			Eigen::VectorXd r1 = jointsLocation[frameIdx - 1][jIdx];
 			if (jointsLocation[frameIdx - 1][jIdx][0] != 0 && jointsLocation[frameIdx - 1][jIdx][1] != 0 && jointsLocation[frameIdx - 1][jIdx][2] != 0)
 				if (jointsLocation[frameIdx][jIdx][0] != 0 && jointsLocation[frameIdx][jIdx][1] != 0 && jointsLocation[frameIdx][jIdx][2] != 0)
-					jointsVelocity[frameIdx][jIdx] = r2 - r1;
+					if (jointsCredit[frameIdx - 1][jIdx] > 2 && (r2 - r1).norm() < 0.1)
+						jointsVelocity[frameIdx][jIdx] = r2 - r1;
 		}
 		if (frameIdx > 1 && inViewFlag[frameIdx - 1])
 		{
 			Eigen::VectorXd v2 = jointsVelocity[frameIdx][jIdx];
 			Eigen::VectorXd v1 = jointsVelocity[frameIdx - 1][jIdx];
 			if (jointsVelocity[frameIdx - 1][jIdx][0] != 0 && jointsVelocity[frameIdx - 1][jIdx][0] != 0 && jointsVelocity[frameIdx - 1][jIdx][0] != 0)
-				if (jointsLocation[frameIdx][jIdx][0] != 0 && jointsLocation[frameIdx][jIdx][1] != 0 && jointsLocation[frameIdx][jIdx][2] != 0)
-					jointsAcceleration[frameIdx][jIdx] = v2 - v1;
+				if (jointsVelocity[frameIdx][jIdx][0] != 0 && jointsVelocity[frameIdx][jIdx][1] != 0 && jointsVelocity[frameIdx][jIdx][2] != 0)
+					if (jointsCredit[frameIdx - 1][jIdx] > 3 && (v2 - v1).norm() < 0.1)
+						jointsAcceleration[frameIdx][jIdx] = v2 - v1;
 		}
 		
 	}
@@ -113,17 +218,26 @@ void Person3DMotion::CalculateNewFrameMotion(int frameIdx, Person3D person)
 			if (totalError > ERR_THRES_REBUILD)
 			{
 				jointsCredit[frameIdx][jIdx] = jointsCredit[frameIdx - 1][jIdx] * 0.6;
+				//jointsFineLocation[frameIdx][jIdx] = predLoc;
+				jointsStatus[frameIdx][jIdx] = 2;
 			}
 			else if (totalError > ERR_THRES_CALIBRT)
 			{
 				jointsCredit[frameIdx][jIdx] = jointsCredit[frameIdx - 1][jIdx] * 0.85;
+				//jointsFineLocation[frameIdx][jIdx] = predLoc * 0.5 + jointsLocation[frameIdx][jIdx] * (1 - 0.5);
+				jointsStatus[frameIdx][jIdx] = 1;
 			}
 			else {
 				jointsCredit[frameIdx][jIdx] = jointsCredit[frameIdx - 1][jIdx] + 1.5;
+				jointsFineLocation[frameIdx][jIdx] = jointsLocation[frameIdx][jIdx];
+				jointsStatus[frameIdx][jIdx] = 0;
+				CalculateConstraintsSkels(frameIdx, person);
 			}
 			totalCredits[frameIdx] += jointsCredit[frameIdx][jIdx];
 		}
 	}
+
+	RebuildPersonSkels(frameIdx);
 
 	std::cout << "Total Credits: " << totalCredits[frameIdx] << std::endl;
 }
