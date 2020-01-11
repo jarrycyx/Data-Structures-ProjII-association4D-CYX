@@ -16,7 +16,7 @@ double MotionTracking::CalcFrameMotionLoss(int personIdx, int thisFramePersonIdx
 			predV = persons[personIdx]->jointsVelocity[currentFrame - 1][jIdx] + persons[personIdx]->jointsAcceleration[currentFrame - 1][jIdx];
 			Eigen::VectorXd predX;
 			predX.resize(3);
-			predX = persons[personIdx]->jointsLocation[currentFrame - 1][jIdx];
+			predX = persons[personIdx]->jointsFineLocation[currentFrame - 1][jIdx];
 			loss += abs(predX[0] - thisFramePersons[thisFramePersonIdx].joints(0, jIdx));
 			loss += abs(predX[1] - thisFramePersons[thisFramePersonIdx].joints(1, jIdx));
 			loss += abs(predX[2] - thisFramePersons[thisFramePersonIdx].joints(2, jIdx));
@@ -78,26 +78,6 @@ void MotionTracking::AddFrame(Associater* associater, int frameIdx)
 		}
 	}
 	
-	//TO-DO£ºÌæ»»ÎªÐÙÑÀÀûËã·¨
-	/*for (int i = 0; i < totalMotionPersonNum; i++)
-	{
-		int min = MAX;
-		if (persons[i]->inViewFlag[frameIdx - 1])
-			for (int j = 0; j < thisFramePersonNum; j++)
-			{
-				if (min > losses[i][j])
-				{
-					min = losses[i][j];
-					corresIdx[i] = j;
-				}
-			}
-		if (min < 10)
-		{
-			persons[i]->CalculateNewFrameMotion(frameIdx, thisFramePersons[corresIdx[i]]);
-			thisFrameAvailable[corresIdx[i]] = 0;
-		}
-	}*/
-	
 	MyKuhnMunkrasAlgo(losses, corresIdx, thisFrameAvailable);
 
 	for (int i = 0; i < thisFramePersonNum; i++)
@@ -133,7 +113,13 @@ void MotionTracking::AddFrame(Associater* associater, int frameIdx)
 	int actualPersonNum = 0;
 
 	for (int i = 0; i < totalMotionPersonNum; i++)
-		actualPersonNum += (persons[i]->inViewFlag[frameIdx]);
+	{
+		if (persons[i]->inViewFlag[frameIdx])
+			actualPersonNum += 1;
+		else if (frameIdx && persons[i]->inViewFlag[frameIdx - 1] && persons[i]->totalCredits[frameIdx - 1] > 20)
+			persons[i]->RebuildPersonSkels(frameIdx);
+
+	}
 	std::cout << "Person Num: " << actualPersonNum << std::endl;
 
 }

@@ -163,7 +163,7 @@ namespace ColorUtil
 			{ 210, 250, 250 },					// light_golden
 			{ 193, 182, 255 },					// light_pink
 			{ 128, 128, 240 },					// light_coral
-			{ 144, 238, 144 },					// light_green
+			{ 210, 250, 250 },					// light_green
 			{ 255, 191, 0 },					// deep_sky_blue
 			{ 113, 179, 60 },					// medium_sea_green
 			{ 122, 160, 255 },					// light_salmon	

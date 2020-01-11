@@ -23,6 +23,7 @@ public:
 	Person2D ProjSkel(int frameIdx, const Eigen::Matrix<float, 3, 4>& proj) const;
 	Person2D ProjSkelFineLocation(int frameIdx, const Eigen::Matrix<float, 3, 4>& proj) const;
 	bool inViewFlag[FRAME_SIZE];
+	bool predictionFlag[FRAME_SIZE];//未检测到人时的补帧预测标志位
 	std::vector<Eigen::VectorXd> jointsFineLocation[FRAME_SIZE];
 	std::vector<Eigen::VectorXd> jointsLocation[FRAME_SIZE];
 	std::vector<Eigen::VectorXd> jointsAcceleration[FRAME_SIZE];

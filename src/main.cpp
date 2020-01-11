@@ -223,7 +223,7 @@ void SaveResult(const int& frameIdx, const std::vector<cv::Mat>& images, const s
 			*/
 
 		for (int pIdx = 0; pIdx < tracking.persons.size(); pIdx++)
-			if (tracking.persons[pIdx]->inViewFlag[frameIdx]
+			if ((tracking.persons[pIdx]->inViewFlag[frameIdx] || tracking.persons[pIdx]->predictionFlag[frameIdx])
 				&& tracking.persons[pIdx]->totalCredits[frameIdx] > Person3DMotion::PEOPLE_DISP_THRES) {
 				const Person2D& person = tracking.persons[pIdx]->ProjSkelFineLocation(frameIdx, cameras[camIdx].proj);
 				const cv::Scalar& color = ColorUtil::GetColor(pIdx);
@@ -295,7 +295,7 @@ void SaveMotionCsv(MotionTracking* motionTracking)
 		for (int p = 0; p < motionTracking->persons.size(); p++)
 		{
 			Person3DMotion* thisPerson = motionTracking->persons[p];
-			if (thisPerson->inViewFlag[frameIdx]) {
+			if (thisPerson->inViewFlag[frameIdx] || thisPerson->predictionFlag[frameIdx]) {
 				csvOut << p << ", ";
 				csvOut << thisPerson->totalCredits[frameIdx] << ", ";
 				for (int jIdx = 0; jIdx < GetSkelDef().jointSize; jIdx++)
