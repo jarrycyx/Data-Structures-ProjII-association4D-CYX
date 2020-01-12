@@ -295,7 +295,7 @@ void SaveMotionCsv(MotionTracking* motionTracking)
 		for (int p = 0; p < motionTracking->persons.size(); p++)
 		{
 			Person3DMotion* thisPerson = motionTracking->persons[p];
-			if (thisPerson->inViewFlag[frameIdx] || thisPerson->predictionFlag[frameIdx]) {
+			if (thisPerson->inViewFlag[frameIdx]) {
 				csvOut << p << ", ";
 				csvOut << thisPerson->totalCredits[frameIdx] << ", ";
 				for (int jIdx = 0; jIdx < GetSkelDef().jointSize; jIdx++)
@@ -315,10 +315,12 @@ void SaveMotionCsv(MotionTracking* motionTracking)
 					csvOut << thisPerson->jointsAcceleration[frameIdx][jIdx](2);
 					if (jIdx != GetSkelDef().jointSize - 1) csvOut << ",";
 
-					frameCsv << thisPerson->jointsLocation[frameIdx][jIdx](0) << ",";
-					frameCsv << thisPerson->jointsLocation[frameIdx][jIdx](1) << ",";
-					frameCsv << thisPerson->jointsLocation[frameIdx][jIdx](2);
-					if (jIdx != GetSkelDef().jointSize - 1) frameCsv << ",";
+					if (thisPerson->totalCredits[frameIdx] > thisPerson->PEOPLE_DISP_THRES) {
+						frameCsv << thisPerson->jointsFineLocation[frameIdx][jIdx](0) << ",";
+						frameCsv << thisPerson->jointsFineLocation[frameIdx][jIdx](1) << ",";
+						frameCsv << thisPerson->jointsFineLocation[frameIdx][jIdx](2);
+						if (jIdx != GetSkelDef().jointSize - 1) frameCsv << ",";
+					}
 				}
 				csvOut << std::endl;
 				frameCsv << std::endl;
@@ -367,7 +369,7 @@ int main()
 		motionTracking.AddFrame(&associater, frameIdx);
 
 		SaveAssociationCsv(&associater, frameIdx);
-		SaveResult(frameIdx, rawImgs, detections[frameIdx], cameras, associater.GetPersons2D(), associater.GetPersons3D(), motionTracking);
+		//6SaveResult(frameIdx, rawImgs, detections[frameIdx], cameras, associater.GetPersons2D(), associater.GetPersons3D(), motionTracking);
 
 		std::cout << std::endl;
 	}
